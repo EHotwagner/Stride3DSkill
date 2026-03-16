@@ -179,10 +179,74 @@ dotnet bin/Debug/net10.0/linux-x64/MyGame.dll
 
 ### Linux prerequisites
 
+**System packages:**
+
 ```bash
-sudo pacman -S freetype2 ttf-liberation mesa libgl sdl2 openal   # Arch
-sudo apt install libfreetype6 fonts-liberation libgl1-mesa-glx libsdl2-2.0-0 libopenal1  # Debian/Ubuntu
+# Arch Linux
+sudo pacman -S freetype2 ttf-liberation mesa libgl sdl2 openal vulkan-icd-loader
+
+# Debian/Ubuntu
+sudo apt install libfreetype6 fonts-liberation libgl1-mesa-glx libsdl2-2.0-0 libopenal1 libvulkan1
 ```
+
+**FreeImage (required for Stride asset compiler):**
+
+The `Stride.FreeImage` NuGet package only ships Windows native binaries. On Linux, you must
+install `libfreeimage` from your system package manager:
+
+```bash
+# Arch Linux (AUR — not in official repos as of March 2026)
+cd /tmp && git clone https://aur.archlinux.org/freeimage.git && cd freeimage && makepkg -si
+
+# Debian/Ubuntu
+sudo apt install libfreeimage3 libfreeimage-dev
+
+# Fedora
+sudo dnf install freeimage freeimage-devel
+```
+
+After installing, create a compatibility symlink (Stride's DllImport uses `"freeimage"` without `lib` prefix):
+
+```bash
+sudo ln -sf /usr/lib/libfreeimage.so /usr/lib/freeimage.so
+```
+
+Without FreeImage, the asset compiler fails on `StrideDebugSpriteFont` and `StrideDefaultSplashScreen`
+texture assets. The game still runs with `StrideCompilerSkipBuild=true` but those assets will be missing.
+
+**GLSL shader compiler (required at runtime for shader compilation):**
+
+Stride expects `linux-x64/glslangValidator.bin` relative to the working directory. It ships in the
+`Stride.Shaders.Compiler` NuGet package but is not auto-copied to the output directory.
+
+Copy it manually to your project root:
+
+```bash
+mkdir -p linux-x64/
+cp ~/.nuget/packages/stride.shaders.compiler/4.3.0.2507/contentFiles/any/any/linux-x64/glslangValidator.bin linux-x64/
+chmod +x linux-x64/glslangValidator.bin
+```
+
+Or automate with an MSBuild target in your `.fsproj`:
+
+```xml
+<Target Name="CopyGlslangValidator" AfterTargets="Build">
+  <Copy SourceFiles="$(NuGetPackageRoot)stride.shaders.compiler/4.3.0.2507/contentFiles/any/any/linux-x64/glslangValidator.bin"
+        DestinationFolder="$(ProjectDir)linux-x64/" SkipUnchangedFiles="true" />
+  <Exec Command="chmod +x $(ProjectDir)linux-x64/glslangValidator.bin" />
+</Target>
+```
+
+### GPU passthrough / container environments
+
+When running under GPU passthrough (e.g., Docker with NVIDIA GPU), use **OpenGL** instead of Vulkan:
+
+```xml
+<StrideGraphicsApi>OpenGL</StrideGraphicsApi>
+```
+
+Vulkan may fail with `Unsupported texture format: R11G11B10_Float` on some passthrough configurations.
+OpenGL works reliably with NVIDIA drivers under passthrough.
 
 ## NuGet Packages
 
